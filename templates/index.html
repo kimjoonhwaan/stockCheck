@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>코스피 주식 정보 대시보드</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📈 코스피 주식 정보 대시보드</h1>
+            <p>코스피 시총 상위 10개 기업의 주식 정보를 실시간으로 확인하세요</p>
+        </header>
+
+        <div class="controls">
+            <button id="updateBtn" class="btn btn-primary">📊 데이터 업데이트</button>
+            <button id="refreshBtn" class="btn btn-secondary">🔄 새로고침</button>
+        </div>
+
+        <div class="status-message" id="statusMessage"></div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>📊 총 종목 수</h3>
+                <div class="stat-value" id="totalStocks">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>📈 상승 종목</h3>
+                <div class="stat-value positive" id="positiveStocks">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>📉 하락 종목</h3>
+                <div class="stat-value negative" id="negativeStocks">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>🔄 보합 종목</h3>
+                <div class="stat-value neutral" id="neutralStocks">-</div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="stocks-panel">
+                <h2>🏢 주식 목록</h2>
+                <div class="stocks-grid" id="stocksGrid">
+                    <!-- 주식 카드들이 여기에 동적으로 추가됩니다 -->
+                </div>
+            </div>
+
+            <div class="chart-panel">
+                <h2>📊 주가 차트</h2>
+                <div class="chart-controls">
+                    <select id="stockSelect">
+                        <option value="">주식을 선택하세요</option>
+                    </select>
+                    <select id="periodSelect">
+                        <option value="365">1년</option>
+                        <option value="180">6개월</option>
+                        <option value="90">3개월</option>
+                        <option value="30">1개월</option>
+                    </select>
+                </div>
+                <div class="chart-container">
+                    <canvas id="priceChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html> 

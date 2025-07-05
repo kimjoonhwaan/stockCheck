@@ -2,11 +2,13 @@ services:
   - type: web
     name: stock-dashboard
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: waitress-serve --host=0.0.0.0 --port=$PORT wsgi:app
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT wsgi:app
     envVars:
       - key: FLASK_ENV
         value: production
       - key: FLASK_DEBUG
         value: False
+      - key: PYTHONUNBUFFERED
+        value: true
     plan: free 

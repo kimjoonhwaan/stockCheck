@@ -1,18 +1,18 @@
+import FinanceDataReader as fdr
 import pandas as pd
 from datetime import datetime, timedelta
 from database import StockDatabase
 import time
 import logging
-from pykrx import stock
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class StockAPI:
+class StockAPIFDR:
     def __init__(self):
         self.db = StockDatabase()
-        # 코스피 시총 상위 10개 회사 (pykrx에서 직접 조회)
+        # 코스피 시총 상위 10개 회사
         self.kospi_top10 = {
             '005930': '삼성전자',
             '000660': 'SK하이닉스', 
@@ -26,25 +26,10 @@ class StockAPI:
             '012330': '현대모비스'
         }
     
-    def get_market_cap_ranking(self, limit=10):
-        """시가총액 상위 종목 가져오기"""
+    def fetch_stock_data(self, symbol, period='1y'):
+        """FinanceDataReader를 사용한 주식 데이터 가져오기"""
         try:
-            # 최근 거래일 기준 시가총액 조회
-            today = datetime.now().strftime('%Y%m%d')
-            df = stock.get_market_cap(today, market='KOSPI')
-            
-            # 시가총액 기준 상위 종목 반환
-            top_stocks = df.nlargest(limit, '시가총액')
-            return top_stocks.index.tolist()
-            
-        except Exception as e:
-            logger.error(f"Error getting market cap ranking: {e}")
-            return list(self.kospi_top10.keys())
-    
-    def fetch_stock_data(self, symbol, period='1y', retries=3):
-        """pykrx를 사용한 주식 데이터 가져오기"""
-        try:
-            logger.info(f"Fetching stock data for {symbol} using pykrx...")
+            logger.info(f"Fetching stock data for {symbol} using FinanceDataReader...")
             
             # 기간 계산
             end_date = datetime.now()
@@ -59,19 +44,39 @@ class StockAPI:
             else:
                 start_date = end_date - timedelta(days=365)
             
-            # 날짜 형식 변환
-            start_str = start_date.strftime('%Y%m%d')
-            end_str = end_date.strftime('%Y%m%d')
-            
-            # pykrx로 데이터 가져오기
-            df = stock.get_market_ohlcv(start_str, end_str, symbol)
+            # FinanceDataReader로 데이터 가져오기 (KRX 소스 우선)
+            try:
+                # KRX 소스 시도
+                df = fdr.DataReader(f'KRX:{symbol}', start_date, end_date)
+                logger.info(f"✓ KRX 소스에서 데이터 가져옴: {symbol}")
+            except:
+                try:
+                    # NAVER 소스 시도
+                    df = fdr.DataReader(f'NAVER:{symbol}', start_date, end_date)
+                    logger.info(f"✓ NAVER 소스에서 데이터 가져옴: {symbol}")
+                except:
+                    # 기본 소스 시도
+                    df = fdr.DataReader(symbol, start_date, end_date)
+                    logger.info(f"✓ 기본 소스에서 데이터 가져옴: {symbol}")
             
             if df.empty:
                 logger.warning(f"No data found for {symbol}")
                 return None
             
-            # 컬럼명 영어로 변경
-            df.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            # 컬럼명이 이미 영어인 경우 그대로 사용
+            if 'Close' not in df.columns and '종가' in df.columns:
+                # 한글 컬럼명을 영어로 변경
+                df.rename(columns={
+                    '시가': 'Open',
+                    '고가': 'High', 
+                    '저가': 'Low',
+                    '종가': 'Close',
+                    '거래량': 'Volume'
+                }, inplace=True)
+            
+            # 필요한 컬럼만 선택
+            required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
+            df = df[required_columns]
             
             # 인덱스를 날짜 문자열로 변환
             df.index = pd.to_datetime(df.index).strftime('%Y-%m-%d')
@@ -83,47 +88,45 @@ class StockAPI:
             logger.error(f"Error fetching data for {symbol}: {e}")
             return None
     
-    def get_company_info(self, symbol, retries=3):
-        """pykrx를 사용한 회사 정보 가져오기"""
+    def get_company_info(self, symbol):
+        """회사 정보 가져오기"""
         try:
-            logger.info(f"Fetching company info for {symbol} using pykrx...")
+            logger.info(f"Getting company info for {symbol}...")
             
-            # 종목명 가져오기
-            company_name = stock.get_market_ticker_name(symbol)
+            # FinanceDataReader로 기본 정보 가져오기
+            try:
+                # 최근 1개월 데이터로 현재가 정보 얻기
+                recent_df = fdr.DataReader(symbol, datetime.now() - timedelta(days=30), datetime.now())
+                if not recent_df.empty:
+                    current_price = recent_df['Close'].iloc[-1] if 'Close' in recent_df.columns else recent_df['종가'].iloc[-1]
+                    market_cap = current_price * 5969782550  # 삼성전자 기준 상장주식수 (임시)
+                else:
+                    market_cap = 0
+            except:
+                market_cap = 0
             
-            # 기본 정보 가져오기
-            today = datetime.now().strftime('%Y%m%d')
-            
-            # 시가총액 정보
-            market_cap_df = stock.get_market_cap(today, today, symbol)
-            market_cap = 0
-            if not market_cap_df.empty:
-                market_cap = market_cap_df.iloc[0]['시가총액']
-            
-            # 기본 정보 구성
             company_info = {
                 'symbol': symbol,
-                'name': company_name if company_name else self.kospi_top10.get(symbol, symbol),
+                'name': self.kospi_top10.get(symbol, f'종목{symbol}'),
                 'market_cap': market_cap,
-                'sector': 'Technology'  # pykrx에서는 섹터 정보가 제한적
+                'sector': 'Technology'
             }
             
-            logger.info(f"Successfully fetched company info for {symbol}")
+            logger.info(f"Successfully got company info for {symbol}")
             return company_info
             
         except Exception as e:
             logger.error(f"Error getting company info for {symbol}: {e}")
-            # 기본값 반환
             return {
                 'symbol': symbol,
-                'name': self.kospi_top10.get(symbol, symbol),
+                'name': self.kospi_top10.get(symbol, f'종목{symbol}'),
                 'market_cap': 0,
                 'sector': 'Unknown'
             }
     
     def update_all_kospi_data(self, conservative_mode=True):
-        """코스피 상위 10개 회사의 데이터 업데이트 (pykrx 사용)"""
-        logger.info("pykrx를 사용하여 코스피 상위 10개 회사 데이터 업데이트 시작...")
+        """코스피 상위 10개 회사의 데이터 업데이트 (FinanceDataReader 사용)"""
+        logger.info("FinanceDataReader를 사용하여 코스피 상위 10개 회사 데이터 업데이트 시작...")
         
         success_count = 0
         total_count = len(self.kospi_top10)
@@ -155,7 +158,7 @@ class StockAPI:
                             high_price=float(row['High']),
                             low_price=float(row['Low']),
                             close_price=float(row['Close']),
-                            volume=int(row['Volume'])
+                            volume=int(row['Volume']) if pd.notna(row['Volume']) else 0
                         )
                     
                     success_count += 1
@@ -163,9 +166,9 @@ class StockAPI:
                 else:
                     logger.warning(f"✗ {name} 주가 데이터 가져오기 실패")
                 
-                # 요청 간격 조정 (pykrx는 더 관대하지만 안전하게)
+                # 요청 간격 조정
                 if conservative_mode:
-                    time.sleep(2)  # 2초 대기
+                    time.sleep(3)  # 3초 대기
                 else:
                     time.sleep(1)  # 1초 대기
                 
@@ -234,9 +237,4 @@ class StockAPI:
             chart_data['prices'].append(price[4])  # close_price
             chart_data['volumes'].append(price[5])  # volume
         
-        return chart_data
-
-if __name__ == "__main__":
-    # 테스트용 코드
-    stock_api = StockAPI()
-    stock_api.update_all_kospi_data() 
+        return chart_data 

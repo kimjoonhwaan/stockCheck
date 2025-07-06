@@ -61,6 +61,25 @@ class StockDatabase:
         finally:
             conn.close()
     
+    def insert_stock_price(self, symbol, date, open_price, high_price, low_price, close_price, volume):
+        """개별 주식 가격 데이터 삽입"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+            INSERT OR REPLACE INTO stock_prices 
+            (symbol, date, open_price, high_price, low_price, close_price, volume)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (symbol, date, open_price, high_price, low_price, close_price, volume))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error inserting stock price: {e}")
+            return False
+        finally:
+            conn.close()
+
     def insert_stock_prices(self, symbol, df):
         """주식 가격 데이터 삽입"""
         conn = sqlite3.connect(self.db_name)
@@ -105,6 +124,20 @@ class StockDatabase:
         finally:
             conn.close()
     
+    def get_all_companies(self):
+        """모든 회사 목록을 튜플 리스트로 반환"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("SELECT symbol, name, market_cap, sector FROM companies")
+            return cursor.fetchall()
+        except Exception as e:
+            print(f"Error getting all companies: {e}")
+            return []
+        finally:
+            conn.close()
+    
     def get_stock_prices(self, symbol, days=365):
         """특정 심볼의 주식 가격 데이터 조회"""
         conn = sqlite3.connect(self.db_name)
@@ -123,6 +156,47 @@ class StockDatabase:
         finally:
             conn.close()
     
+    def get_recent_stock_prices(self, symbol, days=30):
+        """특정 종목의 최근 주가 데이터를 튜플 리스트로 반환"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        
+        try:
+            query = '''
+            SELECT symbol, date, open_price, high_price, close_price, volume
+            FROM stock_prices 
+            WHERE symbol = ? 
+            ORDER BY date DESC 
+            LIMIT ?
+            '''
+            cursor.execute(query, (symbol, days))
+            return cursor.fetchall()
+        except Exception as e:
+            print(f"Error getting recent stock prices: {e}")
+            return []
+        finally:
+            conn.close()
+    
+    def get_stock_prices_by_date_range(self, symbol, start_date, end_date):
+        """날짜 범위로 주가 데이터 조회"""
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        
+        try:
+            query = '''
+            SELECT symbol, date, open_price, high_price, close_price, volume
+            FROM stock_prices 
+            WHERE symbol = ? AND date BETWEEN ? AND ?
+            ORDER BY date DESC
+            '''
+            cursor.execute(query, (symbol, start_date, end_date))
+            return cursor.fetchall()
+        except Exception as e:
+            print(f"Error getting stock prices by date range: {e}")
+            return []
+        finally:
+            conn.close()
+
     def get_latest_prices(self):
         """모든 주식의 최신 가격 조회"""
         conn = sqlite3.connect(self.db_name)
